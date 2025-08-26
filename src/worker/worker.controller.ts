@@ -12,6 +12,7 @@ export class WorkerController {
     return { jobId: id, message, status: 'queued' };
   }
 
+  
   @Patch('confirm/:id')
   async confirmJob(@Param('id') id: string) {
     const job = await this.workerService.confirmJob(id);
