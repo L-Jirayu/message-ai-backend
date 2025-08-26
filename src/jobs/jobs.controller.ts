@@ -6,7 +6,7 @@ import { CreateJobDto } from './dto/create-job.dto';
 export class JobsController {
   constructor(private readonly jobsService: JobsService) {}
 
-  // POST /jobs/ingest
+  // POST /jobs/ingest → สร้าง job ใหม่ + enqueue
   @Post('ingest')
   async create(@Body() createJobDto: CreateJobDto) {
     return this.jobsService.create(createJobDto);

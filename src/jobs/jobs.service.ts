@@ -21,6 +21,7 @@ export class JobsService {
     });
     const savedJob = await newJob.save();
 
+    // publish ไป RabbitMQ
     await this.workerService.enqueueJob(savedJob._id.toString(), savedJob.message);
     this.logger.log(`[JobsService] Job ${savedJob._id} queued`);
 
