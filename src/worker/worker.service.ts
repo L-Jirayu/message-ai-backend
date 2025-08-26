@@ -13,7 +13,6 @@ export class WorkerService implements OnModuleInit {
   private readonly EXCHANGE_NAME = 'jobs_exchange';
   private readonly ROUTING_KEY = 'jobs_routing_key';
 
-  /** เก็บ message ที่ยังไม่ถูก ack */
   private messageMap = new Map<string, amqp.Message>();
 
   constructor(
@@ -34,39 +33,40 @@ export class WorkerService implements OnModuleInit {
     this.startConsumer();
   }
 
-  /** === Producer: enqueue job === */
-  async enqueueJob(jobId: string, message: string) {
+  /** Producer: publish job ไป RabbitMQ */
+  async enqueueJob(jobId: string, message: string, isRetry = false) {
     if (!this.channel) throw new Error('RabbitMQ channel not initialized');
-    const payload = { jobId, message };
+    const payload = { jobId, message, isRetry };
     this.channel.publish(
       this.EXCHANGE_NAME,
       this.ROUTING_KEY,
       Buffer.from(JSON.stringify(payload)),
       { persistent: true },
     );
-    this.logger.log(`[WorkerService] Job ${jobId} published to RabbitMQ`);
+    this.logger.log(`[WorkerService] Job ${jobId} published (retry=${isRetry})`);
   }
 
-  /** === Consumer: subscribe + mark processing === */
+  /** Consumer: subscribe */
   private startConsumer() {
     this.channel.consume(this.QUEUE_NAME, async (msg) => {
       if (!msg) return;
       try {
-        const { jobId, message } = JSON.parse(msg.content.toString());
-        this.logger.log(`[WorkerService] Received job ${jobId}`);
+        const { jobId, message, isRetry } = JSON.parse(msg.content.toString());
+        this.logger.log(`[WorkerService] Received job ${jobId}, retry=${isRetry}`);
 
-        // mark processing in DB
         await this.markJobProcessing(jobId, message);
 
-        // เก็บ msg ไว้ก่อน ack
-        this.messageMap.set(jobId, msg);
-
+        if (isRetry) {
+          this.messageMap.set(jobId, msg);
+        } else {
+          await this.processJobImmediately(jobId, message, msg);
+        }
       } catch (err) {
-        this.logger.error(`[WorkerService] Error consuming job: ${err.message}`);
+        this.logger.error(`[WorkerService] Error: ${err.message}`);
         this.channel.nack(msg, false, true);
       }
     });
-    this.logger.log(`[WorkerService] Worker subscribed to ${this.QUEUE_NAME}`);
+    this.logger.log(`[WorkerService] Subscribed to ${this.QUEUE_NAME}`);
   }
 
   /** mark job processing in DB */
@@ -79,23 +79,19 @@ export class WorkerService implements OnModuleInit {
     }
     await job.save();
     this.workerGateway.sendJobUpdate(job);
-    this.logger.log(`[WorkerService] Job ${jobId} set to processing`);
   }
 
-  /** === Confirm job: ack + DB update completed === */
+  /** Confirm job */
   async confirmJob(jobId: string) {
     const job = await this.jobModel.findById(jobId);
-    if (!job || job.status !== 'processing')
-      throw new Error(`Job ${jobId} not found or not processing`);
+    if (!job || job.status !== 'processing') throw new Error(`Job ${jobId} not found or not processing`);
 
     const msg = this.messageMap.get(jobId);
     if (!msg) throw new Error(`No pending message for job ${jobId}`);
 
-    // ack message
     this.channel.ack(msg);
     this.messageMap.delete(jobId);
 
-    // update DB
     job.resultSummary = `Processed message: ${job.message}`;
     job.category = 'mock-category';
     job.tone = 'neutral';
@@ -104,11 +100,10 @@ export class WorkerService implements OnModuleInit {
     await job.save();
 
     this.workerGateway.sendJobUpdate(job);
-    this.logger.log(`[WorkerService] Job ${jobId} confirmed as completed`);
     return job;
   }
 
-  /** === Retry job: reset + enqueue === */
+  /** Retry job */
   async retryJob(jobId: string) {
     const job = await this.jobModel.findById(jobId);
     if (!job) throw new Error(`Job ${jobId} not found`);
@@ -121,8 +116,7 @@ export class WorkerService implements OnModuleInit {
     job.error = null;
     await job.save();
 
-    await this.enqueueJob(jobId, job.message);
-    this.logger.log(`[WorkerService] Job ${jobId} re-queued`);
+    await this.enqueueJob(jobId, job.message, true);
     return job;
   }
 
@@ -132,5 +126,21 @@ export class WorkerService implements OnModuleInit {
 
   async findOneJob(jobId: string) {
     return this.jobModel.findById(jobId).exec();
+  }
+
+  private async processJobImmediately(jobId: string, message: string, msg: amqp.Message) {
+    const job = await this.jobModel.findById(jobId);
+    if (!job) throw new Error(`Job ${jobId} not found`);
+
+    this.channel.ack(msg);
+
+    job.resultSummary = `Processed message: ${message}`;
+    job.category = 'mock-category';
+    job.tone = 'neutral';
+    job.priority = 'normal';
+    job.status = 'completed';
+    await job.save();
+
+    this.workerGateway.sendJobUpdate(job);
   }
 }

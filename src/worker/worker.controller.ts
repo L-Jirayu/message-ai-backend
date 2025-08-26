@@ -1,9 +1,16 @@
-import { Controller, Get, Post, Patch, Param, NotFoundException } from '@nestjs/common';
+import { Controller, Get, Patch, Param, Post, Body, NotFoundException } from '@nestjs/common';
 import { WorkerService } from './worker.service';
 
 @Controller('worker')
 export class WorkerController {
   constructor(private readonly workerService: WorkerService) {}
+
+  // POST /worker/send/:id/:message → สั่งส่ง job เข้า queue
+  @Post('send/:id/:message')
+  async sendJob(@Param('id') id: string, @Param('message') message: string) {
+    await this.workerService.enqueueJob(id, message);
+    return { jobId: id, message, status: 'queued' };
+  }
 
   @Patch('confirm/:id')
   async confirmJob(@Param('id') id: string) {
