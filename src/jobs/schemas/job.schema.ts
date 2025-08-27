@@ -28,6 +28,9 @@ export class Job {
   priority: string | null;
 
   @Prop({ type: String, default: null })
+  language: string;
+
+  @Prop({ type: String, default: null })
   error: string | null;
 
 }

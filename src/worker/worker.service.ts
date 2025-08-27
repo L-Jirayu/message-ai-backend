@@ -4,6 +4,7 @@ import { Model } from 'mongoose';
 import { Job, JobDocument } from '../jobs/schemas/job.schema';
 import { WorkerGateway } from './worker.gateway';
 import * as amqp from 'amqplib';
+import axios from 'axios';
 
 @Injectable()
 export class WorkerService implements OnModuleInit {
@@ -59,7 +60,7 @@ export class WorkerService implements OnModuleInit {
         if (isRetry) {
           this.messageMap.set(jobId, msg);
         } else {
-          await this.processJobImmediately(jobId, message, msg);
+          await this.processJobImmediately(jobId, msg);
         }
       } catch (err) {
         this.logger.error(`[WorkerService] Error: ${err.message}`);
@@ -81,7 +82,7 @@ export class WorkerService implements OnModuleInit {
     this.workerGateway.sendJobUpdate(job);
   }
 
-  /** Confirm job */
+  /** Confirm job (manual confirm + run AI) */
   async confirmJob(jobId: string) {
     const job = await this.jobModel.findById(jobId);
     if (!job || job.status !== 'processing') throw new Error(`Job ${jobId} not found or not processing`);
@@ -92,15 +93,7 @@ export class WorkerService implements OnModuleInit {
     this.channel.ack(msg);
     this.messageMap.delete(jobId);
 
-    job.resultSummary = `Processed message: ${job.message}`;
-    job.category = 'mock-category';
-    job.tone = 'neutral';
-    job.priority = 'normal';
-    job.status = 'completed';
-    await job.save();
-
-    this.workerGateway.sendJobUpdate(job);
-    return job;
+    return this.processJob(job);
   }
 
   /** Retry job */
@@ -111,7 +104,6 @@ export class WorkerService implements OnModuleInit {
     job.status = 'queued';
     job.resultSummary = null;
     job.category = null;
-    job.tone = null;
     job.priority = null;
     job.error = null;
     await job.save();
@@ -128,19 +120,45 @@ export class WorkerService implements OnModuleInit {
     return this.jobModel.findById(jobId).exec();
   }
 
-  private async processJobImmediately(jobId: string, message: string, msg: amqp.Message) {
+  /** Call AI FastAPI */
+  async processJob(job: JobDocument) {
+    try {
+      const response = await axios.post('https://93baa6009ef9.ngrok-free.app/v1/analyze', {
+        text: job.message,
+        language: 'auto',
+      });
+
+      const aiResult = response.data.result;
+
+      job.resultSummary = aiResult.summary;
+      job.category = aiResult.category;
+      job.priority = aiResult.urgency;
+      job.language = aiResult.language;
+      job.status = 'completed';
+
+      await job.save();
+
+      this.workerGateway.sendJobUpdate(job);
+      return job;
+    } catch (error) {
+      this.logger.error(`[WorkerService] AI error: ${error.message}`);
+
+      job.status = 'failed';
+      job.error = error.message;
+      await job.save();
+
+      this.workerGateway.sendJobUpdate(job);
+      throw error;
+    }
+  }
+
+  /** consume + run AI */
+  private async processJobImmediately(jobId: string, msg: amqp.Message) {
     const job = await this.jobModel.findById(jobId);
     if (!job) throw new Error(`Job ${jobId} not found`);
 
     this.channel.ack(msg);
 
-    job.resultSummary = `Processed message: ${message}`;
-    job.category = 'mock-category';
-    job.tone = 'neutral';
-    job.priority = 'normal';
-    job.status = 'completed';
-    await job.save();
-
-    this.workerGateway.sendJobUpdate(job);
+    return this.processJob(job);
   }
 }
