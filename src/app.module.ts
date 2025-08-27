@@ -11,7 +11,7 @@ import { CrudModule } from './crud/crud.module';
     MongooseModule.forRoot('mongodb://localhost:27017/jobs'),
     WorkerModule,
     JobsModule,
-    CrudModule],
+    CrudModule,],
   controllers: [AppController],
   providers: [AppService],
 })
