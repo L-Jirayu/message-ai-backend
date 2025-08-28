@@ -1,34 +1,35 @@
-// worker/worker.gateway.ts
-import {
-  WebSocketGateway,
-  WebSocketServer,
-} from '@nestjs/websockets';
-import { Server } from 'socket.io';
+// worker.gateway.ts
+import { WebSocketGateway } from '@nestjs/websockets';
+import { JobsGateway } from '../jobs/jobs.gateway';
 import { JobDocument } from '../jobs/schemas/job.schema';
-
 
 @WebSocketGateway({
   cors: {
-    origin: '*', // สำหรับ dev ให้ frontend ทุก origin connect ได้
+    origin: ["http://localhost:5173", "http://localhost:8000"],
+    credentials: true,
   },
+  path: '/socket.io',
 })
 export class WorkerGateway {
-  @WebSocketServer()
-  server: Server;
+  constructor(private readonly jobsGateway: JobsGateway) {}
 
-  /**
-   * ส่ง event update job ไป frontend
-   * @param job Job document
-   */
-    sendJobUpdate(job: JobDocument) {
-    this.server.emit('jobUpdate', {
-        jobId: job._id.toString(),
-        status: job.status,
-        resultSummary: job.resultSummary,
-        category: job.category,
-        tone: job.tone,
-        priority: job.priority,
-        updatedAt: job.updatedAt,
+  sendJobUpdate(job: JobDocument) {
+    this.jobsGateway.sendJobUpdate({
+      _id: job._id.toString(),
+      id:  job._id.toString(),
+      name: job.name ?? '',     
+      message: job.message ?? null,
+      status: job.status,
+      resultSummary: job.resultSummary ?? null,
+      category: job.category ?? null,
+      tone: job.tone ?? null,
+      priority: job.priority ?? null,
+      language: job.language ?? null, 
+      updatedAt: job.updatedAt ?? new Date().toISOString(),
     });
-    }
+  }
+  
+  sendJobDeleted(jobId: string) {
+    this.jobsGateway.sendJobDeleted(jobId);
+  }
 }
