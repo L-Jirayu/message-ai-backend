@@ -1,3 +1,4 @@
+// src/jobs/schemas/job.schema.ts  (ใช้ไฟล์นี้เป็นแหล่งความจริงเพียงไฟล์เดียว)
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 
@@ -12,7 +13,13 @@ export class Job {
   @Prop({ required: true })
   message: string;
 
-  @Prop({ default: 'queued' })
+  @Prop({ type: String, default: '' })
+  name: string;
+
+  @Prop({ 
+    default: 'queued', 
+    enum: ['queued', 'processing', 'completed', 'failed'] 
+  })
   status: 'queued' | 'processing' | 'completed' | 'failed';
 
   @Prop({ type: String, default: null })
@@ -28,11 +35,10 @@ export class Job {
   priority: string | null;
 
   @Prop({ type: String, default: null })
-  language: string;
+  language: string | null;
 
   @Prop({ type: String, default: null })
   error: string | null;
-
 }
 
 export const JobSchema = SchemaFactory.createForClass(Job);

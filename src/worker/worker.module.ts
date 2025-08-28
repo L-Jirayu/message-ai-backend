@@ -1,30 +1,23 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { RabbitMQModule } from '@golevelup/nestjs-rabbitmq';
 import { WorkerService } from './worker.service';
-import { WorkerGateway } from './worker.gateway';
 import { WorkerController } from './worker.controller';
 import { Job, JobSchema } from '../jobs/schemas/job.schema';
+import { RealtimeModule } from '../realtime/realtime.module';
 
 @Module({
   imports: [
-    // MongoDB
     MongooseModule.forFeature([{ name: Job.name, schema: JobSchema }]),
-
-    // RabbitMQ
     RabbitMQModule.forRoot({
-      exchanges: [
-        {
-          name: 'jobs_exchange',
-          type: 'direct',
-        },
-      ],
-      uri: 'amqp://guest:guest@localhost:5672',
+      exchanges: [{ name: 'jobs_exchange', type: 'direct' }],
+      uri: process.env.RABBITMQ_URL || 'amqp://guest:guest@localhost:5672',
       connectionInitOptions: { wait: true },
     }),
+    forwardRef(() => RealtimeModule),
   ],
   controllers: [WorkerController],
-  providers: [WorkerService, WorkerGateway],
-  exports: [WorkerService], // ✅ ให้ JobsModule ใช้ WorkerService ได้
+  providers: [WorkerService],
+  exports: [WorkerService],
 })
 export class WorkerModule {}

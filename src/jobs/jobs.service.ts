@@ -4,6 +4,7 @@ import { Model } from 'mongoose';
 import { CreateJobDto } from './dto/create-job.dto';
 import { Job, JobDocument } from './schemas/job.schema';
 import { WorkerService } from '../worker/worker.service';
+import { JobsGateway } from './jobs.gateway';
 
 @Injectable()
 export class JobsService {
@@ -12,6 +13,7 @@ export class JobsService {
   constructor(
     @InjectModel(Job.name) private jobModel: Model<JobDocument>,
     private readonly workerService: WorkerService,
+    private readonly jobsGateway: JobsGateway,
   ) {}
 
   async create(createJobDto: CreateJobDto) {
@@ -20,6 +22,7 @@ export class JobsService {
       status: 'queued',
     });
     const savedJob = await newJob.save();
+    this.jobsGateway.sendJobUpdate(savedJob);
 
     // publish ไป RabbitMQ
     await this.workerService.enqueueJob(savedJob._id.toString(), savedJob.message);
