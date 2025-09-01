@@ -4,6 +4,7 @@ import { ValidationPipe, Logger } from '@nestjs/common';
 import morgan from 'morgan';
 import * as promClient from 'prom-client';
 
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
@@ -25,5 +26,6 @@ async function bootstrap() {
 
   await app.listen(process.env.PORT ?? 3000);
   Logger.log(`Application running on: ${await app.getUrl()}`);
+  
 }
 bootstrap();
