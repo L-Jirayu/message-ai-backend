@@ -102,7 +102,7 @@ export class WorkerService implements OnModuleInit {
 
   async processJob(job: JobDocument) {
     try {
-      const response = await axios.post('https://5eb235cdb5be.ngrok-free.app/v1/analyze', {
+      const response = await axios.post('https://89538fd4dec3.ngrok-free.app/v1/analyze', {
         text: job.message,
         language: 'auto',
       });
